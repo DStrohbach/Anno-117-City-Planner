@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anno 117 City Planner</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="toolbar">
+        <div class="toolbar-group">
+          <button data-tool="place" class="active">Platzieren</button>
+          <button data-tool="copy">Kopieren</button>
+          <button data-tool="delete">Löschen</button>
+        </div>
+        <div class="toolbar-group">
+          <button id="rotateBtn">Drehen (R)</button>
+          <button id="centerBtn">Zentrieren 0,0</button>
+        </div>
+        <div class="toolbar-group">
+          <button id="exportJsonBtn">Export JSON</button>
+          <button id="importJsonBtn">Import JSON</button>
+          <input id="importInput" type="file" accept="application/json" hidden />
+          <button id="exportImageBtn">Export Bild</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="sidebar" id="sidebar"></aside>
+        <section class="editor-wrap">
+          <canvas id="editorCanvas" width="1400" height="900"></canvas>
+          <div id="infoCard" class="info-card hidden"></div>
+        </section>
+      </main>
+
+      <footer class="stats" id="stats"></footer>
+    </div>
+
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>
