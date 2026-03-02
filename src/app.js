@@ -18,8 +18,7 @@ const state = {
   roadPreview: [],
   roadCells: new Map(),
   buildings: [],
-  buildingCells: new Set(),
-  camera: { x: 0, y: 0, zoom: 1.1 },
+  camera: { x: canvas.width / 2, y: canvas.height / 2, zoom: 1.1 },
   draggingPan: false,
   dragSelection: null,
   clipboard: null,
@@ -29,29 +28,6 @@ const state = {
 };
 
 const STORAGE_KEY = 'anno117-city-planner-state-v2';
-
-function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const width = Math.max(600, Math.round(rect.width));
-  const height = Math.max(400, Math.round(rect.height));
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
-
-  if (state.camera.x === 0 && state.camera.y === 0) {
-    state.camera.x = canvas.width / 2;
-    state.camera.y = canvas.height / 2;
-  }
-}
-
-function getCanvasPoint(event) {
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: (event.clientX - rect.left) * (canvas.width / rect.width),
-    y: (event.clientY - rect.top) * (canvas.height / rect.height),
-  };
-}
 
 function cellKey(x, y) { return `${x},${y}`; }
 function screenToWorld(sx, sy) {
@@ -81,8 +57,6 @@ function inBounds(x, y) { return x >= 0 && y >= 0 && x < GRID_W && y < GRID_H; }
 function buildingAt(x, y) {
   return state.buildings.find((b) => b.cells.some((c) => c.x === x && c.y === y));
 }
-function isBuildingBlocked(x, y) { return state.buildingCells.has(cellKey(x, y)); }
-
 function canPlaceBuilding(item, anchor) {
   const fp = getFootprint(item, anchor);
   return fp.cells.every((c) => inBounds(c.x, c.y) && !buildingAt(c.x, c.y) && !state.roadCells.has(cellKey(c.x, c.y)));
@@ -103,7 +77,6 @@ function placeAt(cell, item) {
     rotation: state.rotation,
     cells: fp.cells,
   });
-  fp.cells.forEach((c) => state.buildingCells.add(cellKey(c.x, c.y)));
 }
 
 function saveState() {
@@ -122,7 +95,6 @@ function loadState() {
     const parsed = JSON.parse(raw);
     state.roadCells = new Map(parsed.roads || []);
     state.buildings = parsed.buildings || [];
-    state.buildingCells = new Set(state.buildings.flatMap((b) => b.cells.map((c) => cellKey(c.x, c.y))));
     state.rotation = parsed.rotation || 0;
     if (parsed.camera) state.camera = parsed.camera;
   } catch {
@@ -132,9 +104,7 @@ function loadState() {
 
 function deleteAt(cell) {
   state.roadCells.delete(cellKey(cell.x, cell.y));
-  const removed = state.buildings.filter((b) => b.cells.some((c) => c.x === cell.x && c.y === cell.y));
   state.buildings = state.buildings.filter((b) => !b.cells.some((c) => c.x === cell.x && c.y === cell.y));
-  removed.forEach((b) => b.cells.forEach((c) => state.buildingCells.delete(cellKey(c.x, c.y))));
   if (state.selectedBuildingId && !state.buildings.some((b) => b.placedId === state.selectedBuildingId)) {
     state.selectedBuildingId = null;
   }
@@ -329,8 +299,8 @@ function applyArea(start, end, fn) {
 }
 
 canvas.addEventListener('mousemove', (e) => {
-  const point = getCanvasPoint(e);
-  const cell = screenToWorld(point.x, point.y);
+  const rect = canvas.getBoundingClientRect();
+  const cell = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
   state.hoverCell = cell;
 
   if (state.draggingPan) {
@@ -339,7 +309,7 @@ canvas.addEventListener('mousemove', (e) => {
   }
 
   if (state.startRoad && byId.get(state.selectedId)?.category === 'road') {
-    state.roadPreview = findRoadPath(state.startRoad, cell, (x, y) => isBuildingBlocked(x, y), { w: GRID_W, h: GRID_H });
+    state.roadPreview = findRoadPath(state.startRoad, cell, (x, y) => !!buildingAt(x, y), { w: GRID_W, h: GRID_H });
   }
 
   if (state.dragSelection) state.dragSelection.end = cell;
@@ -349,8 +319,8 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 2) { state.draggingPan = true; return; }
 
-  const point = getCanvasPoint(e);
-  const cell = screenToWorld(point.x, point.y);
+  const rect = canvas.getBoundingClientRect();
+  const cell = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
   const item = byId.get(state.selectedId);
 
   if (state.tool === 'copy' || state.tool === 'delete') {
@@ -364,7 +334,7 @@ canvas.addEventListener('mousedown', (e) => {
     } else if (!state.startRoad) {
       state.startRoad = cell;
     } else {
-      const path = findRoadPath(state.startRoad, cell, (x, y) => isBuildingBlocked(x, y), { w: GRID_W, h: GRID_H });
+      const path = findRoadPath(state.startRoad, cell, (x, y) => !!buildingAt(x, y), { w: GRID_W, h: GRID_H });
       path.forEach((p) => placeAt(p, item));
       state.startRoad = null;
       state.roadPreview = [];
@@ -449,8 +419,8 @@ canvas.addEventListener('mouseup', () => {
 canvas.addEventListener('click', (e) => {
   if (state.tool !== 'place' || !state.clipboard || byId.get(state.selectedId)?.category === 'road') return;
   if (e.button !== 0) return;
-  const point = getCanvasPoint(e);
-  const base = screenToWorld(point.x, point.y);
+  const rect = canvas.getBoundingClientRect();
+  const base = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
   for (const r of state.clipboard.roads) placeAt({ x: base.x + r.x, y: base.y + r.y }, byId.get(r.id));
   for (const b of state.clipboard.buildings) {
     const item = byId.get(b.itemId);
@@ -507,7 +477,6 @@ importInput.onchange = async () => {
   const json = JSON.parse(txt);
   state.roadCells = new Map(json.roads);
   state.buildings = json.buildings;
-  state.buildingCells = new Set(state.buildings.flatMap((b) => b.cells.map((c) => cellKey(c.x, c.y))));
   state.rotation = json.rotation || 0;
   state.selectedBuildingId = null;
   updateStats();
@@ -539,10 +508,8 @@ sidebar.addEventListener('input', (e) => {
   updateSidebar();
 });
 
-loadState();
-resizeCanvas();
-window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 updateSidebar();
+loadState();
 updateStats();
 updateInfoCard();
 draw();
